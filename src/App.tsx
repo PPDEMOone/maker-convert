@@ -181,7 +181,7 @@ const createTextModel = async () => {
     "https://assets.sunzi.cool/preload/lamp-bulb/font/iDDV003.ttf"
   );
 
-  const [fontSize = DEFAULT_FONT_SIZE] = createTextParams(textContent);
+  createTextParams(textContent);
   const textModel = new makerJs.models.Text(
     font,
     textContent,
@@ -209,6 +209,7 @@ const { center: measureRectCenter, high: measureRectHigh } =
 makerJs.model.zero(measureRect);
 makerJs.model.zero(bottomModelRefer);
 makerJs.model.zero(textModel);
+const horizontalCenterPointX = measureRectCenter[0];
 
 const {
   width: textWidth,
@@ -217,7 +218,7 @@ const {
 } = makerJs.measure.modelExtents(textModel);
 
 // 将文字 和 底座 偏移到限制区域中心
-makerJs.model.moveRelative(bottomModelRefer, [measureRectCenter[0], 0]);
+makerJs.model.moveRelative(bottomModelRefer, [horizontalCenterPointX, 0]);
 
 const {
   high: measureBottomHigh,
@@ -231,7 +232,7 @@ const canBeOffset = textContent
   .some((char) => BASELINE_OUTSIDE_LETTERS.includes(char));
 
 makerJs.model.moveRelative(textModel, [
-  measureRectCenter[0] - textWidth / 2,
+  horizontalCenterPointX - textWidth / 2,
   canBeOffset
     ? measureBottomModelHeight - (textHeight - baseLinePositionY)
     : measureBottomModelHeight,
@@ -260,8 +261,8 @@ const model: IModel = {
     // ref_line_1: createDashedLine([0, 0], bModelTopEndPointRight!, 5),
     // ref_line_2: createDashedLine([0, 0], bModelTopEndPointLeft!, 5),
     ref_vertical_line: createDashedLine(
-      [measureRectCenter[0], measureRectHigh[1]],
-      [measureRectCenter[0], 0],
+      [horizontalCenterPointX, measureRectHigh[1]],
+      [horizontalCenterPointX, 0],
       5
     ),
     ref_middle_line: createDashedLine(
@@ -275,62 +276,172 @@ const model: IModel = {
       5
     ),
   },
-  paths: {
-    // line: new makerJs.paths.Line(
-    //   [0, 0],
-    //   [152.68459518601648, 32.960039152912806]
-    // ),
-  },
+  // paths: {
+  //   line: new makerJs.paths.Line(
+  //     [0, 0],
+  //     [174.37134580784692, 40.19175840837888]
+  //   ),
+  // },
 };
 
 const points: MakerJs.IPoint[] = [];
 const excludePoint: MakerJs.IPoint[] = [];
+const excludeGlyphIncompletePaths: Record<string, IPoint[]> = {};
 
-// 获取参考线内的模型坐标集合
-makerJs.model.walkPaths(textModel, (val) => {
-  const refLine_1 = measureRectCenter[1];
-  const refLine_2 = measureBottomHigh[1];
-  const pick = (y: number) => y < refLine_1 && y >= refLine_2;
+// 设置所有模型坐标 为同一公共坐标轴
+makerJs.model.originate(model);
 
-  if (val.type === "BezierCurve") {
-    const bezierCurvePath = val as InstanceType<
-      typeof makerJs.models.BezierCurve
-    >;
-    const { end, origin } = bezierCurvePath.seed;
-
-    if (pick(end[1])) {
-      points.push(end);
-    } else {
-      excludePoint.push(end);
-    }
-
-    if (pick(origin[1])) {
-      points.push(origin);
-    } else {
-      excludePoint.push(origin);
-    }
-  } else {
-    console.log(val.paths);
-  }
-});
-makerJs.model.walk(textModel, {
-  onPath(model) {
-    console.log(model.route);
-  },
-});
-
-console.log(points, "包含坐标", excludePoint, "参考线外坐标");
 const baseSupport = makerJs.model.clone(bottomModelRefer);
 makerJs.model.move(baseSupport, [
-  bModelTopEndPointRight[0] - measureBottomModelWidth - 6,
-  bModelTopEndPointRight[1],
+  bModelTopEndPointRight[0] - measureBottomModelWidth + 6,
+  bModelTopEndPointRight[1] + 3,
 ]);
 
 makerJs.model.addModel(model, baseSupport, "base");
 console.log(baseSupport);
 
-// 设置所有模型坐标 为同一公共坐标轴
-makerJs.model.originate(model);
+makerJs.model.walk(textModel, {
+  onPath(model) {
+    const refLine_1 = measureRectCenter[1];
+    const refLine_2 = measureBottomHigh[1];
+    const pick = (y: IPoint[1]) => y < refLine_1 && y >= refLine_2;
+    console.log(model);
+    // route[1] is textModel single Glyph position index
+    const excludeIncompleteGlyphPoint = (point: IPoint) => {
+      if (!excludeGlyphIncompletePaths[model.route[1]]) {
+        excludeGlyphIncompletePaths[model.route[1]] = [];
+      }
+      excludeGlyphIncompletePaths[model.route[1]].push(point);
+    };
+
+    if (model.modelContext.type === "BezierCurve") {
+      const bezierCurvePath = model.modelContext as InstanceType<
+        typeof makerJs.models.BezierCurve
+      >;
+      const { end, origin } = bezierCurvePath.seed;
+
+      if (pick(end[1])) {
+        points.push(end);
+      } else if (end[1] < refLine_2) {
+        excludeIncompleteGlyphPoint(end);
+      } else {
+        excludePoint.push(end);
+      }
+
+      if (pick(origin[1])) {
+        points.push(origin);
+      } else if (origin[1] < refLine_2) {
+        excludeIncompleteGlyphPoint(origin);
+      } else {
+        excludePoint.push(origin);
+      }
+    } else {
+      console.log(model.modelContext.paths);
+    }
+  },
+});
+
+console.log(
+  "包含坐标",
+  points,
+  "参考线外坐标(不包括文字超出基线区域的坐标点)",
+  excludePoint,
+  "文字基线以下的内容路径",
+  excludeGlyphIncompletePaths
+);
+
+type HorizontalRange = [IPoint[0], IPoint[0]];
+
+// 文字基线以上的内容路径需要过滤的路径点对应的x轴范围
+const excludeGlyphRange: HorizontalRange[] = [];
+
+for (const [, points] of Object.entries(excludeGlyphIncompletePaths)) {
+  let max = points[0][0],
+    min = points[0][0];
+  for (let i = 0; i < points.length; i++) {
+    const [x] = points[i] as number[];
+    if (x > max) {
+      max = x;
+    } else if (x < min) {
+      min = x;
+    }
+  }
+  excludeGlyphRange.push([min, max]);
+}
+
+// 文字基线以上的内容路径经过过滤的路径结果(底座插入位置目标点集合)
+const targetPoints = points.filter(
+  (point) =>
+    !excludeGlyphRange.some(([min, max]) => point[0] >= min && point[0] < max)
+);
+
+function neighborPointSort<T extends makerJs.IPoint[] = makerJs.IPoint[]>(
+  arr: T
+): T {
+  if (arr.length <= 1) {
+    return arr;
+  }
+
+  const pivot = arr[arr.length - 1];
+  const pivotDistance = Math.abs(horizontalCenterPointX - pivot[0]);
+  const left: makerJs.IPoint[] = [];
+  const right: makerJs.IPoint[] = [];
+  for (let i = 0; i < arr.length - 1; i++) {
+    const point = arr[i];
+    const pointX = point[0];
+    const distance = Math.abs(horizontalCenterPointX - pointX);
+    // console.log(distance, pointX);
+    if (distance < pivotDistance) {
+      left.push(point);
+    } else {
+      right.push(point);
+    }
+  }
+  return [...neighborPointSort(left), pivot, ...neighborPointSort(right)] as T;
+}
+
+// 将坐标点根据 中间点远近进行排序
+const neighborPoints = neighborPointSort(targetPoints);
+
+// 根据规则查找底座路径插入的最适合坐标点
+const insertBaseSupportInvoker = (points: makerJs.IPoint[]) => {
+  let index = 0;
+  const Invoke = (position = 0) => {
+    const [pointX, pointY] = points[position];
+    makerJs.model.move(baseSupport, [
+      bModelTopEndPointRight[0] - measureBottomModelWidth,
+      bModelTopEndPointRight[1],
+    ]);
+
+    const { high, width } = makerJs.measure.modelExtents(baseSupport);
+    let vertexLeft = high[0],
+      vertexRight = high[0] + width;
+
+    const horizontalDistance = Math.abs(pointX - vertexLeft);
+
+    const { origin } = makerJs.model.moveRelative(baseSupport, [
+      horizontalDistance,
+      bModelTopEndPointRight[1],
+    ]);
+    vertexLeft = origin![0];
+    vertexRight = origin![0] + width;
+
+    makerJs.measure.isPointInsideModel();
+    // index ++
+  };
+
+  Invoke(index);
+  // if(condition) {
+  //   index ++
+  //   Invoker(index);
+  // }else { return position }
+};
+
+// insertBaseSupportInvoker(neighborPoints);
+
+makerJs.model.combine(textModel, baseSupport);
+
+// makerJs.model.originate(model);
 function App() {
   return (
     <div
