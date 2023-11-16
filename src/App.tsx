@@ -92,6 +92,7 @@ const TEXT_LENGTH_RANGE: Map<[Min, Max], Target> = new Map([
   [[490, 510], 460],
 ]);
 
+// 基线位置相对于文本高度的比例
 const TEXT_BASELINE_AND_HEIGHT_RATIO = 1 / 4.1;
 
 function createDashedLine(
@@ -174,7 +175,7 @@ const createTextParams = (text: string) => {
   return [fontSize, length, target];
 };
 
-const textContent = "Maynsa";
+const textContent = "Rose";
 
 const createTextModel = async () => {
   const font = await opentype.load(
@@ -237,13 +238,12 @@ makerJs.model.moveRelative(textModel, [
     ? measureBottomModelHeight - (textHeight - baseLinePositionY)
     : measureBottomModelHeight,
 ]);
-
-const bModelTopEndPointLeft = bottomModelRefer.origin,
+// console.log(bottomModelRefer.origin);
+const bModelTopEndPointLeft = bottomModelRefer.origin!,
   bModelTopEndPointRight = [
     (bottomModelRefer.origin?.[0] ?? 0) + measureBottomModelWidth,
     bottomModelRefer.origin?.[1] ?? 0,
   ] as makerJs.IPoint;
-
 console.log(
   measureRectCenter,
   "区域中心点",
@@ -253,13 +253,16 @@ console.log(
   "底座右端点"
 );
 
+const baseSupport = makerJs.model.clone(bottomModelRefer);
+
 const model: IModel = {
   models: {
+    // base: baseSupport,
     // refer: bottomModelRefer,
     text: textModel,
     measure: measureRect,
-    // ref_line_1: createDashedLine([0, 0], bModelTopEndPointRight!, 5),
-    // ref_line_2: createDashedLine([0, 0], bModelTopEndPointLeft!, 5),
+    // ref_line_1: createDashedLine([0, 0], bModelTopEndPointLeft!, 5),
+    // ref_line_2: createDashedLine([0, 0], bModelTopEndPointRight!, 5),
     ref_vertical_line: createDashedLine(
       [horizontalCenterPointX, measureRectHigh[1]],
       [horizontalCenterPointX, 0],
@@ -276,36 +279,26 @@ const model: IModel = {
       5
     ),
   },
-  // paths: {
-  //   line: new makerJs.paths.Line(
-  //     [0, 0],
-  //     [174.37134580784692, 40.19175840837888]
-  //   ),
-  // },
+  paths: {
+    line: new makerJs.paths.Line([0, 0], [136.4097946476269, 39.7703287453701]),
+  },
 };
 
 const points: MakerJs.IPoint[] = [];
 const excludePoint: MakerJs.IPoint[] = [];
 const excludeGlyphIncompletePaths: Record<string, IPoint[]> = {};
 
-// 设置所有模型坐标 为同一公共坐标轴
-makerJs.model.originate(model);
-
-const baseSupport = makerJs.model.clone(bottomModelRefer);
-makerJs.model.move(baseSupport, [
-  bModelTopEndPointRight[0] - measureBottomModelWidth + 6,
-  bModelTopEndPointRight[1] + 3,
-]);
-
 makerJs.model.addModel(model, baseSupport, "base");
-console.log(baseSupport);
+
+// 设置所有路径模型坐标 为同一公共坐标轴
+makerJs.model.originate(textModel);
 
 makerJs.model.walk(textModel, {
   onPath(model) {
     const refLine_1 = measureRectCenter[1];
     const refLine_2 = measureBottomHigh[1];
     const pick = (y: IPoint[1]) => y < refLine_1 && y >= refLine_2;
-    console.log(model);
+    // console.log(model);
     // route[1] is textModel single Glyph position index
     const excludeIncompleteGlyphPoint = (point: IPoint) => {
       if (!excludeGlyphIncompletePaths[model.route[1]]) {
@@ -403,45 +396,61 @@ function neighborPointSort<T extends makerJs.IPoint[] = makerJs.IPoint[]>(
 // 将坐标点根据 中间点远近进行排序
 const neighborPoints = neighborPointSort(targetPoints);
 
+console.log(neighborPoints);
 // 根据规则查找底座路径插入的最适合坐标点
 const insertBaseSupportInvoker = (points: makerJs.IPoint[]) => {
   let index = 0;
-  const Invoke = (position = 0) => {
-    const [pointX, pointY] = points[position];
-    makerJs.model.move(baseSupport, [
-      bModelTopEndPointRight[0] - measureBottomModelWidth,
-      bModelTopEndPointRight[1],
-    ]);
+  const invoke = (position = 0) => {
+    const point = points[position];
+    if (!point) {
+      throw new Error("There is not point, Didn't find the right point");
+    }
+    const [pointX, pointY] = point as number[];
+    makerJs.model.move(baseSupport, bModelTopEndPointLeft);
 
-    const { high, width } = makerJs.measure.modelExtents(baseSupport);
-    let vertexLeft = high[0],
-      vertexRight = high[0] + width;
-
-    const horizontalDistance = Math.abs(pointX - vertexLeft);
-
-    const { origin } = makerJs.model.moveRelative(baseSupport, [
+    const horizontalDistance = pointX - bModelTopEndPointLeft[0];
+    const { origin = [0, 0] } = makerJs.model.moveRelative(baseSupport, [
       horizontalDistance,
-      bModelTopEndPointRight[1],
+      0,
     ]);
-    vertexLeft = origin![0];
-    vertexRight = origin![0] + width;
 
-    makerJs.measure.isPointInsideModel();
-    // index ++
+    // [p_8]为底座中绘制圆环圆弧
+    const arc = baseSupport.paths?.["p_8"] as makerJs.IPathArc;
+    // 当前底座位置对应的圆弧弧心的距离作为底座插入文字路径的垂直安全距离
+    const safeVerticalDistance =
+      makerJs.measure.pointDistance(
+        origin,
+        makerJs.point.add(origin, arc.origin)
+      ) - arc.radius;
+
+    if (makerJs.measure.pointDistance(point, origin) > safeVerticalDistance) {
+      index++;
+      invoke(index);
+    } else {
+      const lastOffsetTimesY = safeVerticalDistance % 1;
+      if (safeVerticalDistance < 1) {
+        makerJs.model.moveRelative(baseSupport, [0, safeVerticalDistance]);
+      }
+
+      for (let i = 1; i < Math.trunc(safeVerticalDistance); i++) {
+        makerJs.model.moveRelative(baseSupport, [0, 1]);
+        // if(makerJs.is)
+      }
+
+      makerJs.model.moveRelative(baseSupport, [0, lastOffsetTimesY]);
+    }
+    // 垂直偏移
   };
 
-  Invoke(index);
-  // if(condition) {
-  //   index ++
-  //   Invoker(index);
-  // }else { return position }
+  invoke(index);
+  console.log(index);
 };
 
 // insertBaseSupportInvoker(neighborPoints);
 
+makerJs.model.move(baseSupport, [136.4097946476269 - 5.5, 39.7703287453701]);
 makerJs.model.combine(textModel, baseSupport);
 
-// makerJs.model.originate(model);
 function App() {
   return (
     <div
