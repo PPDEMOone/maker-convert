@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 dependencies:
+  bezier-js:
+    specifier: ^6.1.4
+    version: 6.1.4
   makerjs:
     specifier: ^0.18.1
     version: 0.18.1
@@ -862,6 +865,10 @@ packages:
 
   /bezier-js@2.6.1:
     resolution: {integrity: sha512-jelZM33eNzcZ9snJ/5HqJLw3IzXvA8RFcBjkdOB8SDYyOvW8Y2tTosojAiBTnD1MhbHoWUYNbxUXxBl61TxbRg==}
+    dev: false
+
+  /bezier-js@6.1.4:
+    resolution: {integrity: sha512-PA0FW9ZpcHbojUCMu28z9Vg/fNkwTj5YhusSAjHHDfHDGLxJ6YUKrAN2vk1fP2MMOxVw4Oko16FMlRGVBGqLKg==}
     dev: false
 
   /brace-expansion@1.1.11:

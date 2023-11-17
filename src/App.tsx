@@ -1,6 +1,7 @@
 import BluePrint from "react-blueprint-svg";
 import makerJs, { IModel, IPoint } from "makerjs";
 import opentype from "opentype.js";
+import { Bezier } from "bezier-js";
 type Min = number;
 type Max = number;
 type Target = number;
@@ -129,6 +130,39 @@ function createDashedLine(
   return dashedLine;
 }
 
+function createBezierCurveArc<T extends number[]>(...args: T) {
+  const [cx, cy, rx, ry] = args;
+  const k = (4 / 3) * Math.tan(Math.PI / 8);
+  const arcBezierCurve = new makerJs.models.BezierCurve(
+    [0, ry],
+    [rx * k, ry],
+    [rx, ry * k],
+    [rx, 0]
+  );
+
+  makerJs.model.move(arcBezierCurve, [cx, cy]);
+
+  return arcBezierCurve;
+}
+
+// 根据圆弧创建以弧心作为圆心；圆的贝塞尔曲线
+function createBezierByCircle(origin: IPoint, radius: number) {
+  const [cx, cy] = origin as number[];
+  const arc_1 = createBezierCurveArc(cx, cy, -radius, radius);
+  const arc_2 = createBezierCurveArc(cx, cy, radius, radius);
+  const arc_3 = createBezierCurveArc(cx, cy, radius, -radius);
+  const arc_4 = createBezierCurveArc(cx, cy, -radius, -radius);
+  const models: MakerJs.IModel = {
+    models: {
+      arc_1,
+      arc_2,
+      arc_3,
+      arc_4,
+    },
+  };
+  return models;
+}
+
 const createTextParams = (text: string) => {
   const length = text?.split("").reduce((pre, cur) => {
     return (pre += WORD_LENGTH_MAP!.get(cur) ?? 0);
@@ -244,6 +278,7 @@ const bModelTopEndPointLeft = bottomModelRefer.origin!,
     (bottomModelRefer.origin?.[0] ?? 0) + measureBottomModelWidth,
     bottomModelRefer.origin?.[1] ?? 0,
   ] as makerJs.IPoint;
+
 console.log(
   measureRectCenter,
   "区域中心点",
@@ -280,7 +315,7 @@ const model: IModel = {
     ),
   },
   paths: {
-    line: new makerJs.paths.Line([0, 0], [136.4097946476269, 39.7703287453701]),
+    // line: new makerJs.paths.Line([0, 0], [142.47479464762688, 24.7996244]),
   },
 };
 
@@ -328,6 +363,8 @@ makerJs.model.walk(textModel, {
       } else {
         excludePoint.push(origin);
       }
+
+      console.log(model.modelContext);
     } else {
       console.log(model.modelContext.paths);
     }
@@ -396,7 +433,7 @@ function neighborPointSort<T extends makerJs.IPoint[] = makerJs.IPoint[]>(
 // 将坐标点根据 中间点远近进行排序
 const neighborPoints = neighborPointSort(targetPoints);
 
-console.log(neighborPoints);
+// console.log(neighborPoints);
 // 根据规则查找底座路径插入的最适合坐标点
 const insertBaseSupportInvoker = (points: makerJs.IPoint[]) => {
   let index = 0;
@@ -405,7 +442,7 @@ const insertBaseSupportInvoker = (points: makerJs.IPoint[]) => {
     if (!point) {
       throw new Error("There is not point, Didn't find the right point");
     }
-    const [pointX, pointY] = point as number[];
+    const [pointX] = point as number[];
     makerJs.model.move(baseSupport, bModelTopEndPointLeft);
 
     const horizontalDistance = pointX - bModelTopEndPointLeft[0];
@@ -416,39 +453,56 @@ const insertBaseSupportInvoker = (points: makerJs.IPoint[]) => {
 
     // [p_8]为底座中绘制圆环圆弧
     const arc = baseSupport.paths?.["p_8"] as makerJs.IPathArc;
+
     // 当前底座位置对应的圆弧弧心的距离作为底座插入文字路径的垂直安全距离
+    const arcRelativeOrigin = makerJs.point.add(origin, arc.origin);
     const safeVerticalDistance =
-      makerJs.measure.pointDistance(
-        origin,
-        makerJs.point.add(origin, arc.origin)
-      ) - arc.radius;
+      makerJs.measure.pointDistance(origin, arcRelativeOrigin) - arc.radius;
 
     if (makerJs.measure.pointDistance(point, origin) > safeVerticalDistance) {
       index++;
       invoke(index);
     } else {
+      // console.log(arcRelativeOrigin, arc.radius);
+      const measureCircle = createBezierByCircle(arcRelativeOrigin, arc.radius);
+      makerJs.model.originate(measureCircle);
+      // new Bezier()
+      console.log(measureCircle);
+
       const lastOffsetTimesY = safeVerticalDistance % 1;
       if (safeVerticalDistance < 1) {
         makerJs.model.moveRelative(baseSupport, [0, safeVerticalDistance]);
-      }
+      } else {
+        for (let i = 1; i < Math.trunc(safeVerticalDistance); i++) {
+          makerJs.model.moveRelative(baseSupport, [0, 1]);
+          // if(makerJs.is)
+        }
 
-      for (let i = 1; i < Math.trunc(safeVerticalDistance); i++) {
-        makerJs.model.moveRelative(baseSupport, [0, 1]);
-        // if(makerJs.is)
+        makerJs.model.moveRelative(baseSupport, [0, lastOffsetTimesY]);
       }
-
-      makerJs.model.moveRelative(baseSupport, [0, lastOffsetTimesY]);
     }
     // 垂直偏移
   };
 
   invoke(index);
-  console.log(index);
+  // console.log(index);
 };
 
-// insertBaseSupportInvoker(neighborPoints);
+insertBaseSupportInvoker(neighborPoints);
 
-makerJs.model.move(baseSupport, [136.4097946476269 - 5.5, 39.7703287453701]);
+console.log(textModel);
+
+// const arc = baseSupport.paths!["p_8"] as MakerJs.IPathArc;
+// const circle = createBezierByCircle(
+//   makerJs.point.add(baseSupport.origin!, arc.origin),
+//   arc.radius
+// );
+// makerJs.model.originate(circle);
+
+// console.log(circle);
+// makerJs.model.addModel(model, circle, "circle");
+
+makerJs.model.move(baseSupport, [136.4097946476269 - 6.5, 39.7703287453701]);
 makerJs.model.combine(textModel, baseSupport);
 
 function App() {
