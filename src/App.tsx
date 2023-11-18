@@ -140,7 +140,7 @@ function createBezierCurveArc<T extends number[]>(...args: T) {
     [rx, 0]
   );
 
-  makerJs.model.move(arcBezierCurve, [cx, cy]);
+  makerJs.model.move(arcBezierCurve, [cx + 10, cy + 10]);
 
   return arcBezierCurve;
 }
@@ -209,7 +209,7 @@ const createTextParams = (text: string) => {
   return [fontSize, length, target];
 };
 
-const textContent = "Rose";
+const textContent = "F";
 
 const createTextModel = async () => {
   const font = await opentype.load(
@@ -308,9 +308,22 @@ const model: IModel = {
       [measureRectHigh[0], measureRectCenter[1]],
       5
     ),
+    ref_top_line: createDashedLine(
+      [0, measureBottomHigh[1] + textHeight],
+      [measureRectHigh[0], measureBottomHigh[1] + textHeight],
+      5
+    ),
     ref_bottom_line: createDashedLine(
       [0, measureBottomHigh[1]],
       [measureRectHigh[0], measureBottomHigh[1]],
+      5
+    ),
+    ref_textContent_middle_line: createDashedLine(
+      [0, (measureBottomHigh[1] + measureBottomHigh[1] + textHeight) / 2],
+      [
+        measureRectHigh[0],
+        (measureBottomHigh[1] + measureBottomHigh[1] + textHeight) / 2,
+      ],
       5
     ),
   },
@@ -454,34 +467,30 @@ const insertBaseSupportInvoker = (points: makerJs.IPoint[]) => {
     // [p_8]为底座中绘制圆环圆弧
     const arc = baseSupport.paths?.["p_8"] as makerJs.IPathArc;
 
-    // 当前底座位置对应的圆弧弧心的距离作为底座插入文字路径的垂直安全距离
     const arcRelativeOrigin = makerJs.point.add(origin, arc.origin);
+    // 当前底座位置对应的圆弧弧心的距离作为底座插入文字路径的垂直安全距离
     const safeVerticalDistance =
       makerJs.measure.pointDistance(origin, arcRelativeOrigin) - arc.radius;
 
-    if (makerJs.measure.pointDistance(point, origin) > safeVerticalDistance) {
-      index++;
-      invoke(index);
-    } else {
-      // console.log(arcRelativeOrigin, arc.radius);
-      const measureCircle = createBezierByCircle(arcRelativeOrigin, arc.radius);
-      makerJs.model.originate(measureCircle);
-      // new Bezier()
-      console.log(measureCircle);
+    // if (makerJs.measure.pointDistance(point, origin) > safeVerticalDistance) {
+    //   index++;
+    //   invoke(index);
+    // } else {
+    //   const measureCircle = createBezierByCircle(arcRelativeOrigin, arc.radius);
+    //   makerJs.model.originate(measureCircle);
+    //   console.log(measureCircle);
 
-      const lastOffsetTimesY = safeVerticalDistance % 1;
-      if (safeVerticalDistance < 1) {
-        makerJs.model.moveRelative(baseSupport, [0, safeVerticalDistance]);
-      } else {
-        for (let i = 1; i < Math.trunc(safeVerticalDistance); i++) {
-          makerJs.model.moveRelative(baseSupport, [0, 1]);
-          // if(makerJs.is)
-        }
+    //   const lastOffsetTimesY = safeVerticalDistance % 1;
+    //   if (safeVerticalDistance < 1) {
+    //     makerJs.model.moveRelative(baseSupport, [0, safeVerticalDistance]);
+    //   } else {
+    //     for (let i = 1; i < Math.trunc(safeVerticalDistance); i++) {
+    //       makerJs.model.moveRelative(baseSupport, [0, 1]);
+    //     }
 
-        makerJs.model.moveRelative(baseSupport, [0, lastOffsetTimesY]);
-      }
-    }
-    // 垂直偏移
+    //     makerJs.model.moveRelative(baseSupport, [0, lastOffsetTimesY]);
+    //   }
+    // }
   };
 
   invoke(index);
@@ -502,7 +511,7 @@ console.log(textModel);
 // console.log(circle);
 // makerJs.model.addModel(model, circle, "circle");
 
-makerJs.model.move(baseSupport, [136.4097946476269 - 6.5, 39.7703287453701]);
+// makerJs.model.move(baseSupport, [136.4097946476269 - 5.7, 39.7703287453701]);
 makerJs.model.combine(textModel, baseSupport);
 
 function App() {
