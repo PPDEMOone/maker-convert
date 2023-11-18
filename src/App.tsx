@@ -476,8 +476,8 @@ const insertBaseSupportInvoker = (points: makerJs.IPoint[]) => {
     //   index++;
     //   invoke(index);
     // } else {
-    //   const measureCircle = createBezierByCircle(arcRelativeOrigin, arc.radius);
-    //   makerJs.model.originate(measureCircle);
+    // const measureCircle = createBezierByCircle(arcRelativeOrigin, arc.radius);
+    // makerJs.model.originate(measureCircle);
     //   console.log(measureCircle);
 
     //   const lastOffsetTimesY = safeVerticalDistance % 1;
