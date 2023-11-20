@@ -1,10 +1,26 @@
 import BluePrint from "react-blueprint-svg";
-import makerJs, { IModel, IPoint } from "makerjs";
+import makerJs, { IModel, IPoint, models } from "makerjs";
 import opentype from "opentype.js";
 import { Bezier } from "bezier-js";
+import { v4 as uuid } from "uuid";
+
 type Min = number;
 type Max = number;
 type Target = number;
+
+type KeyPoint = {
+  id: string;
+  // 关键点坐标
+  point: MakerJs.IPoint;
+  // 关键点类型
+  type: "origin" | "end";
+  // 控制点
+  controls?: MakerJs.IPoint[];
+  // 关键点对应端点（如果是贝塞曲线 则是 P0 或者 Pn）
+  endPoint: Omit<KeyPoint, "endPoint">;
+  // 该关键点位于的字形
+  parentGlyph: string;
+};
 
 // 超出字体基线字符
 const BASELINE_OUTSIDE_LETTERS = ["g", "j", "p", "q", "y", "f"];
@@ -140,7 +156,7 @@ function createBezierCurveArc<T extends number[]>(...args: T) {
     [rx, 0]
   );
 
-  makerJs.model.move(arcBezierCurve, [cx + 10, cy + 10]);
+  makerJs.model.move(arcBezierCurve, [cx, cy]);
 
   return arcBezierCurve;
 }
@@ -209,7 +225,7 @@ const createTextParams = (text: string) => {
   return [fontSize, length, target];
 };
 
-const textContent = "F";
+const textContent = "Rome";
 
 const createTextModel = async () => {
   const font = await opentype.load(
@@ -252,7 +268,7 @@ const {
   center: textCenter,
 } = makerJs.measure.modelExtents(textModel);
 
-// 将文字 和 底座 偏移到限制区域中心
+// 将底座偏移到限制区域中心
 makerJs.model.moveRelative(bottomModelRefer, [horizontalCenterPointX, 0]);
 
 const {
@@ -260,19 +276,24 @@ const {
   width: measureBottomModelWidth,
   height: measureBottomModelHeight,
 } = makerJs.measure.modelExtents(bottomModelRefer);
+
+// 字体文字基线偏移位置
 const baseLinePositionY =
   textCenter[1] + textHeight * TEXT_BASELINE_AND_HEIGHT_RATIO;
+
+// 当前文本字符路径是否存在有在文字基线以下的路径
 const canBeOffset = textContent
   .split("")
   .some((char) => BASELINE_OUTSIDE_LETTERS.includes(char));
 
+// 将文字偏移至底座最高点，将底座最高点做为文字基线
 makerJs.model.moveRelative(textModel, [
   horizontalCenterPointX - textWidth / 2,
   canBeOffset
     ? measureBottomModelHeight - (textHeight - baseLinePositionY)
     : measureBottomModelHeight,
 ]);
-// console.log(bottomModelRefer.origin);
+
 const bModelTopEndPointLeft = bottomModelRefer.origin!,
   bModelTopEndPointRight = [
     (bottomModelRefer.origin?.[0] ?? 0) + measureBottomModelWidth,
@@ -298,41 +319,44 @@ const model: IModel = {
     measure: measureRect,
     // ref_line_1: createDashedLine([0, 0], bModelTopEndPointLeft!, 5),
     // ref_line_2: createDashedLine([0, 0], bModelTopEndPointRight!, 5),
-    ref_vertical_line: createDashedLine(
-      [horizontalCenterPointX, measureRectHigh[1]],
-      [horizontalCenterPointX, 0],
-      5
-    ),
-    ref_middle_line: createDashedLine(
-      [0, measureRectCenter[1]],
-      [measureRectHigh[0], measureRectCenter[1]],
-      5
-    ),
-    ref_top_line: createDashedLine(
-      [0, measureBottomHigh[1] + textHeight],
-      [measureRectHigh[0], measureBottomHigh[1] + textHeight],
-      5
-    ),
-    ref_bottom_line: createDashedLine(
-      [0, measureBottomHigh[1]],
-      [measureRectHigh[0], measureBottomHigh[1]],
-      5
-    ),
-    ref_textContent_middle_line: createDashedLine(
-      [0, (measureBottomHigh[1] + measureBottomHigh[1] + textHeight) / 2],
-      [
-        measureRectHigh[0],
-        (measureBottomHigh[1] + measureBottomHigh[1] + textHeight) / 2,
-      ],
-      5
-    ),
+    // ref_vertical_line: createDashedLine(
+    //   [horizontalCenterPointX, measureRectHigh[1]],
+    //   [horizontalCenterPointX, 0],
+    //   5
+    // ),
+    // ref_middle_line: createDashedLine(
+    //   [0, measureRectCenter[1]],
+    //   [measureRectHigh[0], measureRectCenter[1]],
+    //   5
+    // ),
+    // ref_top_line: createDashedLine(
+    //   [0, measureBottomHigh[1] + textHeight],
+    //   [measureRectHigh[0], measureBottomHigh[1] + textHeight],
+    //   5
+    // ),
+    // ref_bottom_line: createDashedLine(
+    //   [0, measureBottomHigh[1]],
+    //   [measureRectHigh[0], measureBottomHigh[1]],
+    //   5
+    // ),
+    // ref_textContent_middle_line: createDashedLine(
+    //   [0, (measureBottomHigh[1] + measureBottomHigh[1] + textHeight) / 2],
+    //   [
+    //     measureRectHigh[0],
+    //     (measureBottomHigh[1] + measureBottomHigh[1] + textHeight) / 2,
+    //   ],
+    //   5
+    // ),
   },
   paths: {
-    // line: new makerJs.paths.Line([0, 0], [142.47479464762688, 24.7996244]),
+    line: new makerJs.paths.Line(
+      [0, 0],
+      [134.92479464762692, 44.00013625198875]
+    ),
   },
 };
 
-const points: MakerJs.IPoint[] = [];
+const keyPoints: KeyPoint[] = [];
 const excludePoint: MakerJs.IPoint[] = [];
 const excludeGlyphIncompletePaths: Record<string, IPoint[]> = {};
 
@@ -342,54 +366,78 @@ makerJs.model.addModel(model, baseSupport, "base");
 makerJs.model.originate(textModel);
 
 makerJs.model.walk(textModel, {
-  onPath(model) {
+  onPath(m) {
     const refLine_1 = measureRectCenter[1];
     const refLine_2 = measureBottomHigh[1];
     const pick = (y: IPoint[1]) => y < refLine_1 && y >= refLine_2;
-    // console.log(model);
-    // route[1] is textModel single Glyph position index
+
     const excludeIncompleteGlyphPoint = (point: IPoint) => {
-      if (!excludeGlyphIncompletePaths[model.route[1]]) {
-        excludeGlyphIncompletePaths[model.route[1]] = [];
+      // route[1] is textModel single Glyph position index
+      if (!excludeGlyphIncompletePaths[m.route[1]]) {
+        excludeGlyphIncompletePaths[m.route[1]] = [];
       }
-      excludeGlyphIncompletePaths[model.route[1]].push(point);
+      excludeGlyphIncompletePaths[m.route[1]].push(point);
     };
 
-    if (model.modelContext.type === "BezierCurve") {
-      const bezierCurvePath = model.modelContext as InstanceType<
+    if (m.modelContext.type === "BezierCurve") {
+      const bc = m.modelContext as InstanceType<
         typeof makerJs.models.BezierCurve
       >;
-      const { end, origin } = bezierCurvePath.seed;
+      const { end, origin } = bc.seed;
+      console.log(m);
+
+      const p_end: Omit<KeyPoint, "endPoint"> = {
+        id: uuid(),
+        point: end,
+        controls: bc.seed.controls,
+        type: "end",
+        parentGlyph: m.route[1],
+      };
+
+      const p_origin: Omit<KeyPoint, "endPoint"> = {
+        id: uuid(),
+        point: origin,
+        controls: bc.seed.controls,
+        type: "origin",
+        parentGlyph: m.route[1],
+      };
 
       if (pick(end[1])) {
-        points.push(end);
+        keyPoints.push({
+          ...p_end,
+          endPoint: p_origin,
+        });
       } else if (end[1] < refLine_2) {
+        // 排除底座最高点（即文字基线位置）以下的字形坐标
         excludeIncompleteGlyphPoint(end);
       } else {
         excludePoint.push(end);
       }
 
       if (pick(origin[1])) {
-        points.push(origin);
+        keyPoints.push({
+          ...p_origin,
+          endPoint: p_end,
+        });
       } else if (origin[1] < refLine_2) {
         excludeIncompleteGlyphPoint(origin);
       } else {
         excludePoint.push(origin);
       }
 
-      console.log(model.modelContext);
+      // console.log(model.modelContext);
     } else {
-      console.log(model.modelContext.paths);
+      // console.log(model.modelContext.paths);
     }
   },
 });
 
 console.log(
   "包含坐标",
-  points,
+  keyPoints,
   "参考线外坐标(不包括文字超出基线区域的坐标点)",
   excludePoint,
-  "文字基线以下的内容路径",
+  "文字基线以下的字形坐标",
   excludeGlyphIncompletePaths
 );
 
@@ -413,106 +461,118 @@ for (const [, points] of Object.entries(excludeGlyphIncompletePaths)) {
 }
 
 // 文字基线以上的内容路径经过过滤的路径结果(底座插入位置目标点集合)
-const targetPoints = points.filter(
-  (point) =>
-    !excludeGlyphRange.some(([min, max]) => point[0] >= min && point[0] < max)
+const targetPoints = keyPoints.filter(
+  (p) =>
+    !excludeGlyphRange.some(
+      ([min, max]) => p.point[0] >= min && p.point[0] < max
+    )
 );
 
-function neighborPointSort<T extends makerJs.IPoint[] = makerJs.IPoint[]>(
-  arr: T
-): T {
+function neighborKeyPointSort<T extends KeyPoint[] = KeyPoint[]>(arr: T): T {
   if (arr.length <= 1) {
     return arr;
   }
 
   const pivot = arr[arr.length - 1];
-  const pivotDistance = Math.abs(horizontalCenterPointX - pivot[0]);
-  const left: makerJs.IPoint[] = [];
-  const right: makerJs.IPoint[] = [];
+  const pivotDistance = Math.abs(horizontalCenterPointX - pivot.point[0]);
+  const left: KeyPoint[] = [];
+  const right: KeyPoint[] = [];
   for (let i = 0; i < arr.length - 1; i++) {
-    const point = arr[i];
-    const pointX = point[0];
+    const p = arr[i];
+    const pointX = p.point[0];
     const distance = Math.abs(horizontalCenterPointX - pointX);
     // console.log(distance, pointX);
     if (distance < pivotDistance) {
-      left.push(point);
+      left.push(p);
     } else {
-      right.push(point);
+      right.push(p);
     }
   }
-  return [...neighborPointSort(left), pivot, ...neighborPointSort(right)] as T;
+  return [
+    ...neighborKeyPointSort(left),
+    pivot,
+    ...neighborKeyPointSort(right),
+  ] as T;
 }
 
 // 将坐标点根据 中间点远近进行排序
-const neighborPoints = neighborPointSort(targetPoints);
+const neighborKeyPoints = neighborKeyPointSort(targetPoints);
 
-// console.log(neighborPoints);
+console.log("排序后关键点", neighborKeyPoints);
+
+// console.log(neighborKeyPoints);
 // 根据规则查找底座路径插入的最适合坐标点
-const insertBaseSupportInvoker = (points: makerJs.IPoint[]) => {
+const insertBaseSupportInvoker = (points: KeyPoint[]) => {
   let index = 0;
   const invoke = (position = 0) => {
-    const point = points[position];
-    if (!point) {
+    const p = points[position];
+    if (!p) {
       throw new Error("There is not point, Didn't find the right point");
     }
-    const [pointX] = point as number[];
+    console.log(p);
+    const [pointX, pointY] = p.point as number[];
     makerJs.model.move(baseSupport, bModelTopEndPointLeft);
 
     const horizontalDistance = pointX - bModelTopEndPointLeft[0];
+    const verticalDistance = pointY - measureBottomHigh[1];
+
     const { origin = [0, 0] } = makerJs.model.moveRelative(baseSupport, [
       horizontalDistance,
-      0,
+      verticalDistance,
     ]);
-
     // [p_8]为底座中绘制圆环圆弧
-    const arc = baseSupport.paths?.["p_8"] as makerJs.IPathArc;
-
-    const arcRelativeOrigin = makerJs.point.add(origin, arc.origin);
-    // 当前底座位置对应的圆弧弧心的距离作为底座插入文字路径的垂直安全距离
-    const safeVerticalDistance =
-      makerJs.measure.pointDistance(origin, arcRelativeOrigin) - arc.radius;
-
-    // if (makerJs.measure.pointDistance(point, origin) > safeVerticalDistance) {
-    //   index++;
-    //   invoke(index);
-    // } else {
+    // const arc = baseSupport.paths?.["p_8"] as makerJs.IPathArc;
+    // const arcRelativeOrigin = makerJs.point.add(origin, arc.origin);
     // const measureCircle = createBezierByCircle(arcRelativeOrigin, arc.radius);
-    // makerJs.model.originate(measureCircle);
-    //   console.log(measureCircle);
+    // console.log(origin, insideModel, index);
 
-    //   const lastOffsetTimesY = safeVerticalDistance % 1;
-    //   if (safeVerticalDistance < 1) {
-    //     makerJs.model.moveRelative(baseSupport, [0, safeVerticalDistance]);
-    //   } else {
-    //     for (let i = 1; i < Math.trunc(safeVerticalDistance); i++) {
-    //       makerJs.model.moveRelative(baseSupport, [0, 1]);
-    //     }
+    // // 当前底座位置对应的圆弧弧心的距离作为底座插入文字路径的垂直安全距离
+    for (let i = 1; i < Math.trunc(measureBottomModelWidth) * 2; i++) {
+      const curOrigin = makerJs.model.moveRelative(baseSupport, [-0.5, 0])
+        .origin!;
+      const [x, y] = curOrigin as number[];
 
-    //     makerJs.model.moveRelative(baseSupport, [0, lastOffsetTimesY]);
-    //   }
-    // }
+      if (
+        isBaseSupportInsideTheTextModel(curOrigin, [
+          x + measureBottomModelWidth,
+          y,
+        ])
+      ) {
+        break;
+      }
+    }
+
+    if (
+      !isBaseSupportInsideTheTextModel(baseSupport.origin!, [
+        baseSupport.origin![0] + measureBottomModelWidth,
+        baseSupport.origin![1],
+      ])
+    ) {
+      index++;
+      invoke(index);
+    }
+  };
+  const isBaseSupportInsideTheTextModel = (
+    left: MakerJs.IPoint,
+    right: MakerJs.IPoint
+  ) => {
+    if (left && right) {
+      return (
+        makerJs.measure.isPointInsideModel(left, textModel) &&
+        makerJs.measure.isPointInsideModel(right, textModel)
+      );
+    }
+    return false;
   };
 
   invoke(index);
   // console.log(index);
 };
-
-insertBaseSupportInvoker(neighborPoints);
+insertBaseSupportInvoker(neighborKeyPoints);
 
 console.log(textModel);
 
-// const arc = baseSupport.paths!["p_8"] as MakerJs.IPathArc;
-// const circle = createBezierByCircle(
-//   makerJs.point.add(baseSupport.origin!, arc.origin),
-//   arc.radius
-// );
-// makerJs.model.originate(circle);
-
-// console.log(circle);
-// makerJs.model.addModel(model, circle, "circle");
-
-// makerJs.model.move(baseSupport, [136.4097946476269 - 5.7, 39.7703287453701]);
-makerJs.model.combine(textModel, baseSupport);
+makerJs.model.combine(baseSupport, textModel);
 
 function App() {
   return (
