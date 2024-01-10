@@ -7,7 +7,7 @@ type TextModelParams = ConstructorParameters<typeof makerJs.models.Text>;
 const custom = {
   text1: "MAHLEAH",
   text2: "D",
-  text3: "DlafdJff",
+  text3: "Trigger",
 };
 
 const guitarPathData =
@@ -116,7 +116,7 @@ let lineTextModel = new makerJs.models.Text(
   ...lineTextParams
 ) as makerJs.IModel;
 
-let guitarLineTextModel = new makerJs.models.Text(
+const guitarLineTextModel = new makerJs.models.Text(
   ...guitarLineTextParams
 ) as makerJs.IModel;
 
@@ -173,11 +173,10 @@ while (
     break;
   }
 
-  lineTextModel = lineTextContent.models!["lineTextModel"] =
-    makerJs.model.distort(lineTextModel, scale, scale);
-  targetMeasureRect = makerJs.measure.modelExtents(lineTextModel);
+  const testModel = makerJs.model.distort(lineTextModel, scale, scale);
+  targetMeasureRect = makerJs.measure.modelExtents(testModel);
   // console.log(targetMeasureRect);
-  makerJs.model.moveRelative(lineTextModel, [
+  makerJs.model.moveRelative(testModel, [
     (CARVED_MAX_WIDTH - targetMeasureRect.width) / 2,
     (CARVED_MAX_HEIGHT - targetMeasureRect.height) / 2,
   ]);
@@ -193,15 +192,16 @@ while (
   );
 
   if (overflowBottom && overflowTop) {
-    break;
+    // break;
   } else if (!overflowTop) {
-    makerJs.model.moveRelative(lineTextModel, [0, -Math.abs(high[1])]);
+    makerJs.model.moveRelative(testModel, [0, -Math.abs(high[1])]);
   } else if (!overflowBottom) {
-    makerJs.model.moveRelative(lineTextModel, [0, Math.abs(low[1])]);
+    makerJs.model.moveRelative(testModel, [0, Math.abs(low[1])]);
   } else {
-    continue;
+    // continue;
   }
-  targetMeasureRect = makerJs.measure.modelExtents(lineTextModel);
+  targetMeasureRect = makerJs.measure.modelExtents(testModel);
+  lineTextContent.models!["lineTextModel"] = testModel;
   times++;
   // console.log(scale);
 }
@@ -232,22 +232,16 @@ makerJs.model.zero(guitarKnife);
 
 makerJs.model.originate(guitarKnife);
 
-let guitarLineTextModelScale = 1;
+makerJs.model.scale(guitarLineTextModel, 0.3, false);
 
 makerJs.model.addModel(guitarKnife, guitarLineTextModel, "guitarLineTextModel");
 
-while (
-  makerJs.measure.modelExtents(guitarLineTextModel).width > MAX_LINE_TEXT_WIDTH
-) {
-  guitarLineTextModelScale = Number((scale - SCALE_RATIO_STEP).toFixed(2));
-  guitarLineTextModel = guitarKnife.models!["guitarLineTextModel"] =
-    makerJs.model.scale(guitarLineTextModel, guitarLineTextModelScale, false);
-}
 makerJs.model.zero(guitarLineTextModel);
 makerJs.model.move(guitarLineTextModel, GUITAR_LINE_TEXT_POSITION);
 
 makerJs.model.moveRelative(guitarKnife, [60, 0]);
-
+// console.log(guitarKnife.models);
+console.log(makerJs.exporter.toSVGPathData(guitarKnife));
 const model: IModel = {
   models: {
     pickKnife,
@@ -269,30 +263,30 @@ const model: IModel = {
 // const pathData2 = makerJs.exporter.toSVGPathData(guitarKnife, {
 //   fillRule: "nonzero",
 // });
-const svg = makerJs.exporter.toSVG(guitarKnife, {
-  viewBox: true,
-  useSvgPathOnly: true,
-  fill: "none",
-  stroke: "#000",
-  strokeWidth: "0.14px",
-  scale: 1,
-  cssStyle: "none",
-  svgAttrs: {
-    width: "100%",
-    height: "100%",
-  },
-  scalingStroke: true,
-});
+// const svg = makerJs.exporter.toSVG(guitarKnife, {
+//   viewBox: true,
+//   useSvgPathOnly: true,
+//   fill: "none",
+//   stroke: "#000",
+//   strokeWidth: "0.14px",
+//   scale: 1,
+//   cssStyle: "none",
+//   svgAttrs: {
+//     width: "100%",
+//     height: "100%",
+//   },
+//   scalingStroke: true,
+// });
 
-const svg2 = makerJs.exporter.toSVG(pickKnife, {
-  viewBox: true,
-  useSvgPathOnly: true,
-  fill: "none",
-  stroke: "#000",
-  strokeWidth: "0.14px",
-});
+// const svg2 = makerJs.exporter.toSVG(pickKnife, {
+//   viewBox: true,
+//   useSvgPathOnly: true,
+//   fill: "none",
+//   stroke: "#000",
+//   strokeWidth: "0.14px",
+// });
 
-console.log(svg);
+// console.log(svg);
 function App() {
   return (
     <div
